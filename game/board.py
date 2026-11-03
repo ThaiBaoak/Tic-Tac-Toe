@@ -70,4 +70,5 @@ class Board:
                     if 0 <= rr < self.n and 0 <= cc < self.n and self.grid[rr][cc] == 0:
                         cand.add((rr, cc))
         return list(cand)
+    
 
