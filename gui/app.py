@@ -1,6 +1,7 @@
 from tkinter import *
 from tkinter import ttk
 from game.board import Board
+from agents import AGENTS
 import random
 import threading
 import queue
