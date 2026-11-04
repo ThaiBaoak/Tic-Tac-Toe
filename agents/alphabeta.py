@@ -27,7 +27,7 @@ class AlphaBetaAgent(Agent):
         r = -1
         c = -1
         if (depth == 0):
-            return [r,c,self.get_score(player)]
+            return [r,c,self.get_score()]
         else:
             for cell in self.board.candidate_moves():
                 self.board.play(cell)
@@ -52,5 +52,46 @@ class AlphaBetaAgent(Agent):
             return [r,c,alpha]
         else:
             return [r,c,beta]
+
+    def get_score(self):
+        b = self.board
+        if b.winner_ == 1:
+            return WIN +  self.depth
+        if b.winner_ == 2:
+            return -WIN - self.depth
+        return self._lines_score(1) - self._lines_score(2)
+
+    def _lines_score(self, p):
+        b = self.board
+        n, k = b.n, b.k
+        total = 0
+        grid = b.grid
+
+        for r in range(n):
+            for c in range(n):
+                for dr, dc in DIRS:
+                    # Kiểm tra ô có nằm trong bàn cờ
+                    er, ec = r + (k - 1) * dr, c + (k - 1) * dc
+                    if not (0 <= er < n and 0 <= ec < n):
+                        continue
+
+                    mine = 0
+                    blocked = False
+
+                    for i in range(k):
+                        v = grid[r + i * dr][c + i * dc]
+                        if v == p:
+                            mine += 1
+                        elif v != 0:  # Bị chặn
+                            blocked = True
+                            break
+
+                    # Tính điểm
+                    if not blocked and mine > 0:
+                        score = 10 ** mine
+                        total += score
+
+        return total
+            
 
     
