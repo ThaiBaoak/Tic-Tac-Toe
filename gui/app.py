@@ -1,6 +1,7 @@
 from tkinter import *
 from tkinter import ttk
 from game.board import Board
+from agents.mcts_agent import MCTSAgent
 import random
 import threading
 import queue
@@ -19,6 +20,11 @@ def is_human_turn():
     else:
         return combo_o.get() == "Human"
 
+def current_agent():
+    if board.player == 1:
+        return combo_x.get()
+    return combo_o.get()
+
 def next_turn(row, column):
     if not is_human_turn():
         return
@@ -32,12 +38,25 @@ def trigger_ai():
     if board.is_terminal() or is_human_turn():
         return
 
-    t = threading.Thread(target=ai_worker, args=(board.copy(), game_id))
+    try:
+        iterations = max(1, int(iterations_var.get()))
+    except ValueError:
+        iterations = 500
+        iterations_var.set("500")
+
+    t = threading.Thread(
+        target=ai_worker,
+        args=(board.copy(), game_id, current_agent(), iterations),
+        daemon=True
+    )
     t.start()
 
-def ai_worker(board_copy, current_game_id):
-    moves = board_copy.legal_moves()
-    best_move = random.choice(moves) if moves else None
+def ai_worker(board_copy, current_game_id, agent_name, iterations):
+    if agent_name == "MCTS":
+        best_move = MCTSAgent(iterations=iterations).choose_move(board_copy)
+    else:
+        moves = board_copy.legal_moves()
+        best_move = random.choice(moves) if moves else None
 
     ai_queue.put((best_move, current_game_id))
 
@@ -144,7 +163,12 @@ Label(control_frame, text="Win (k):", font=('consolas', 12)).grid(row=0, column=
 k_var = StringVar(value="3")
 Spinbox(control_frame, from_=3, to=20, textvariable=k_var, width=5, font=('consolas', 12)).grid(row=0, column=3, padx=5)
 
-AGENT_LIST = ["Human", "Random"] 
+Label(control_frame, text="MCTS iterations:", font=('consolas', 12)).grid(row=0, column=4, padx=5)
+iterations_var = StringVar(value="500")
+Spinbox(control_frame, from_=1, to=100000, increment=100, textvariable=iterations_var,
+        width=7, font=('consolas', 12)).grid(row=0, column=5, padx=5)
+
+AGENT_LIST = ["Human", "Random", "MCTS"] 
 
 Label(control_frame, text="Player X:", font=('consolas', 12)).grid(row=1, column=0, padx=5, pady=5)
 combo_x = ttk.Combobox(control_frame, values=AGENT_LIST, state="readonly", width=10, font=('consolas', 12))
@@ -157,7 +181,7 @@ combo_o.set("Human")
 combo_o.grid(row=1, column=3, padx=5, pady=5)
 
 reset_button = Button(control_frame, text="Ván mới", font=('consolas', 14), command=new_game)
-reset_button.grid(row=2, column=0, columnspan=4, pady=10)
+reset_button.grid(row=2, column=0, columnspan=6, pady=10)
 
 frame = Frame(window)
 frame.pack()
