@@ -26,7 +26,7 @@ class AlphaBetaAgent(Agent):
         self.nodes += 1
         r = -1
         c = -1
-        if (depth == 0):
+        if depth == 0 or self.board.is_terminal():
             return [r,c,self.get_score()]
         else:
             for cell in self.board.candidate_moves():

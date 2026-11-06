@@ -36,7 +36,7 @@ def minimax(agent, depth, player, counter):
     counter[0] += 1
     b = agent.board
     if depth == 0 or b.is_terminal():
-        return agent.get_score(player)
+        return agent.get_score()
     vals = []
     for cell in b.candidate_moves():
         b.play(cell)
@@ -90,7 +90,7 @@ def test_same_value_as_minimax_and_fewer_nodes():
             agent = AlphaBetaAgent(depth)
             agent.board = b.copy()
             agent.nodes = 0
-            ab_value = agent.alpha_beta_prunning(depth, -INF, INF, agent.board.player)[2]
+            ab_value = agent.alpha_beta_pruning(depth, -INF, INF, agent.board.player)[2]
             total_ab += agent.nodes
 
             cnt = [0]
