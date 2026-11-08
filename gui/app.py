@@ -11,7 +11,6 @@ import queue
 current_n = 3
 current_k = 3
 board = Board(current_n, current_k)
-buttons = []
 
 game_id = 0
 ai_queue = queue.Queue()
@@ -82,23 +81,50 @@ def poll_ai():
 
 
 
+def board_geometry():
+    # Ô vuông, tự co theo kích thước canvas hiện tại để luôn thấy toàn bàn
+    width = max(canvas.winfo_width(), 1)
+    height = max(canvas.winfo_height(), 1)
+    cell = max(min(width, height) // board.n, 1)
+    offset_x = (width - cell * board.n) // 2
+    offset_y = (height - cell * board.n) // 2
+    return cell, offset_x, offset_y
+
+def on_canvas_click(event):
+    cell, offset_x, offset_y = board_geometry()
+    column = (event.x - offset_x) // cell
+    row = (event.y - offset_y) // cell
+    if 0 <= row < board.n and 0 <= column < board.n:
+        next_turn(row, column)
+
 def render():
     MARK = {1: "X", 2: "O", 0: ""}
 
+    canvas.delete("all")
+    cell, offset_x, offset_y = board_geometry()
+    font_size = max(int(cell * 0.45), 6)
+    win_cells = set(board.win_line) if board.win_line else set()
+    tied = board.is_full() and board.winner_ is None
+
     for row in range(board.n):
         for column in range(board.n):
-            val = board.grid[row][column]
+            x1 = offset_x + column * cell
+            y1 = offset_y + row * cell
 
-            buttons[row][column]['text'] = MARK.get(val, "")
+            if (row, column) in win_cells:
+                color = "lightgreen"
+            elif tied:
+                color = "lightyellow"
+            else:
+                color = "#F0F0F0"
 
-            buttons[row][column].config(bg="#F0F0F0")
+            canvas.create_rectangle(x1, y1, x1 + cell, y1 + cell,
+                                    fill=color, outline="#808080")
 
-            if hasattr(board, 'win_line') and board.win_line:
-                for r, c in board.win_line:
-                    buttons[r][c].config(bg="lightgreen")
-
-            elif board.is_full() and board.winner_ is None:
-                buttons[row][column].config(bg="lightyellow")
+            mark = MARK.get(board.grid[row][column], "")
+            if mark:
+                canvas.create_text(x1 + cell / 2, y1 + cell / 2, text=mark,
+                                   font=('consolas', font_size, 'bold'))
 
     if board.winner_:
         winner_mark = MARK.get(board.winner_, str(board.winner_))
@@ -127,36 +153,24 @@ def new_game():
 
     board = Board(current_n, current_k)
 
-    build_grid(current_n)
     render()
 
     window.after(350, trigger_ai)
-
-
-def build_grid(n):
-    global buttons
-
-    for w in frame.winfo_children():
-        w.destroy()
-
-    buttons = [[None for _ in range(n)] for _ in range(n)]
-
-    font_size = max(10, 40 - 2 * n)
-
-    for row in range(n):
-        for column in range(n):
-            btn = Button(frame, text="", font=('consolas', font_size), width=5, height=2,
-                         command=lambda r=row, c=column: next_turn(r, c))
-
-            btn.grid(row=row, column=column)
-            buttons[row][column] = btn
 
 # ================= KỞI TẠO GIAO DIỆN ================= #
 window = Tk()
 window.title("Tic-Tac-Toe")
 
-label = Label(text="Game Start", font=('consolas', 40))
-label.pack(side="top", pady=10)
+# Cửa sổ luôn nằm gọn trong màn hình và căn giữa; bàn cờ co giãn theo cửa sổ
+screen_w = window.winfo_screenwidth()
+screen_h = window.winfo_screenheight()
+win_w = min(900, screen_w - 80)
+win_h = min(950, screen_h - 120)
+window.geometry(f"{win_w}x{win_h}+{(screen_w - win_w) // 2}+{max((screen_h - win_h) // 2 - 20, 0)}")
+window.minsize(640, 480)
+
+label = Label(text="Game Start", font=('consolas', 24))
+label.pack(side="top", pady=5)
 
 control_frame = Frame(window)
 control_frame.pack(side="top", pady=5)
@@ -189,10 +203,11 @@ combo_o.grid(row=1, column=3, padx=5, pady=5)
 reset_button = Button(control_frame, text="Ván mới", font=('consolas', 14), command=new_game)
 reset_button.grid(row=2, column=0, columnspan=6, pady=10)
 
-frame = Frame(window)
-frame.pack()
+canvas = Canvas(window, highlightthickness=0)
+canvas.pack(side="top", fill="both", expand=True, padx=10, pady=(0, 10))
+canvas.bind("<Button-1>", on_canvas_click)
+canvas.bind("<Configure>", lambda event: render())
 
-build_grid(current_n)
 new_game()
 
 poll_ai()  
