@@ -1,97 +1,93 @@
-from .base import Agent
+from .evaluation import INF, SearchAgent, SearchTimeout, now
 
-INF = float("inf")
-WIN = 10 ** 9
-DIRS = ((0, 1), (1, 0), (1, 1), (1, -1))
+__all__ = ["AlphaBetaAgent", "INF"]
 
-class AlphaBetaAgent(Agent):
+
+class AlphaBetaAgent(SearchAgent):
+    """Minimax + cắt tỉa alpha-beta.
+
+    - Cùng giá trị với Backtracking ở cùng độ sâu, nhưng duyệt ít node hơn nhờ cắt tỉa.
+    - Sắp thứ tự nước đi (tấn công + phòng thủ) để cắt tỉa sớm.
+    - Nếu truyền time_limit (giây): đào sâu dần (iterative deepening) tới khi hết giờ,
+      dùng nước tốt nhất của độ sâu đã duyệt xong. Nếu không: duyệt cố định `depth`.
+    """
+
     name = "Alpha-beta"
 
     def __init__(self, depth=3):
-        super().__init__()
-        self.depth = depth
-        self.board = None
-        self.nodes = 0
+        super().__init__(depth)
+        self.deadline = None
+        self.root_len = 0
+        self.pv_move = None
 
     def choose_move(self, board, time_limit=None):
-        self.board = board
-        self.nodes = 0
-        r, c, _ = self.alpha_beta_pruning(self.depth, -INF, INF, board.player)
+        if board.is_terminal():
+            return None
+        self.attach(board.copy())
+        self.root_len = len(self.board.history)
+        self.pv_move = None
+        player = self.board.player
+
+        if time_limit is None:
+            self.deadline = None
+            r, c, _ = self.alpha_beta_pruning(self.depth, -INF, INF, player)
+            reached = self.depth
+        else:
+            r, c, reached = self.iterative_deepening(player, now() + time_limit)
+
         if r == -1:
-            r, c = board.candidate_moves()[0]
-        self.stats = {"nodes": self.nodes, "depth": self.depth}
+            r, c = self.ordered_candidates(player)[0]
+        self.stats = {"nodes": self.nodes, "depth": reached}
         return (r, c)
+
+    def iterative_deepening(self, player, deadline):
+        best = (-1, -1)
+        reached = 0
+        max_depth = self.board.n * self.board.n - self.root_len
+        for depth in range(1, max_depth + 1):
+            # độ sâu 1 luôn chạy xong để chắc chắn có một nước đi hợp lệ
+            self.deadline = deadline if depth > 1 else None
+            try:
+                r, c, value = self.alpha_beta_pruning(depth, -INF, INF, player)
+            except SearchTimeout:
+                break
+            if r != -1:
+                best = (r, c)
+                self.pv_move = best          # lần sau thử nước tốt nhất này đầu tiên
+            reached = depth
+            if abs(value) >= self.evaluator.win or now() >= deadline:
+                break                        # đã chứng minh thắng/thua, hoặc hết giờ
+        return best[0], best[1], reached
 
     def alpha_beta_pruning(self, depth, alpha, beta, player):
         self.nodes += 1
-        r = -1
-        c = -1
-        if (depth == 0):
-            return [r,c,self.get_score()]
-        else:
-            for cell in self.board.candidate_moves():
-                self.board.play(cell)
-                score = self.alpha_beta_pruning(depth-1, alpha, beta, 3-player)
+        if self.deadline is not None and self.nodes % 512 == 0 and now() > self.deadline:
+            raise SearchTimeout()
 
-                if (player==1):
-                    if(score[2]>alpha):
-                        alpha= score[2]
-                        r=cell[0]
-                        c=cell[1]
-                else:
-                    if score[2]<beta:
-                        beta = score[2]
-                        r = cell[0]
-                        c = cell[1]
+        if depth == 0 or self.board.is_terminal():
+            return [-1, -1, self.get_score(depth)]
 
-                self.board.undo()
+        moves = self.ordered_candidates(player)
+        if len(self.board.history) == self.root_len and self.pv_move in moves:
+            moves.remove(self.pv_move)
+            moves.insert(0, self.pv_move)
+        if not moves:
+            return [-1, -1, self.get_score(depth)]
 
-                if(alpha >= beta):
-                    break
-        if(player==1):
-            return [r,c,alpha]
-        else:
-            return [r,c,beta]
+        r = c = -1
+        for cell in moves:
+            self.do(cell)
+            score = self.alpha_beta_pruning(depth - 1, alpha, beta, 3 - player)[2]
+            self.undo()
 
-    def get_score(self):
-        b = self.board
-        if b.winner_ == 1:
-            return WIN +  self.depth
-        if b.winner_ == 2:
-            return -WIN - self.depth
-        return self._lines_score(1) - self._lines_score(2)
+            if player == 1:
+                if score > alpha:
+                    alpha, r, c = score, cell[0], cell[1]
+            else:
+                if score < beta:
+                    beta, r, c = score, cell[0], cell[1]
 
-    def _lines_score(self, p):
-        b = self.board
-        n, k = b.n, b.k
-        total = 0
-        grid = b.grid
+            if alpha >= beta:
+                break
 
-        for r in range(n):
-            for c in range(n):
-                for dr, dc in DIRS:
-                    # Kiểm tra ô có nằm trong bàn cờ
-                    er, ec = r + (k - 1) * dr, c + (k - 1) * dc
-                    if not (0 <= er < n and 0 <= ec < n):
-                        continue
-
-                    mine = 0
-                    blocked = False
-
-                    for i in range(k):
-                        v = grid[r + i * dr][c + i * dc]
-                        if v == p:
-                            mine += 1
-                        elif v != 0:  # Bị chặn
-                            blocked = True
-                            break
-
-                    # Tính điểm
-                    if not blocked and mine > 0:
-                        score = 10 ** mine
-                        total += score
-
-        return total
-            
-
-    
+        return [r, c, alpha if player == 1 else beta]

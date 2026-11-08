@@ -8,6 +8,7 @@ import time
 
 from game.board import Board
 from agents.alphabeta import AlphaBetaAgent, INF
+from agents.backtracking import BacktrackingAgent
 
 
 # ---------- công cụ dùng chung ----------
@@ -25,24 +26,9 @@ def random_position(n, k, plies, rng):
         for _ in range(plies):
             if b.is_terminal():
                 break
-            b.play(rng.choice(b.candidate_moves()))
+            b.play(rng.choice(b.legal_moves()))
         if not b.is_terminal():
             return b
-
-
-def minimax(agent, depth, player, counter):
-    """Minimax THUẦN (không cắt tỉa), cùng hàm đánh giá với alpha-beta.
-    Dùng làm đáp án chuẩn để đối chiếu."""
-    counter[0] += 1
-    b = agent.board
-    if depth == 0 or b.is_terminal():
-        return agent.get_score(player)
-    vals = []
-    for cell in b.candidate_moves():
-        b.play(cell)
-        vals.append(minimax(agent, depth - 1, 3 - player, counter))
-        b.undo()
-    return max(vals) if player == 1 else min(vals)
 
 
 # ---------- 1. Thế cờ có đáp án rõ ràng ----------
@@ -65,41 +51,52 @@ def test_win_as_O():
     assert AlphaBetaAgent(2).choose_move(b.copy()) == (4, 2)
 
 
+def test_prefers_faster_win():
+    # X thắng ngay ở (0,2); độ sâu 3 vẫn phải chọn thắng ngay chứ không đi vòng
+    b = make_board(5, 3, [(0, 0), (4, 4), (0, 1), (4, 3)])
+    assert AlphaBetaAgent(3).choose_move(b.copy()) == (0, 2)
+
+
+def test_terminal_board_returns_none():
+    b = make_board(3, 3, [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2)])
+    assert b.is_terminal()
+    assert AlphaBetaAgent(2).choose_move(b) is None
+
+
 # ---------- 2. Tính hợp lệ và không làm hỏng bàn ----------
 def test_move_legal_and_board_restored():
     rng = random.Random(0)
     for _ in range(10):
         b = random_position(7, 5, rng.randint(2, 12), rng)
-        before = ([r[:] for r in b.grid], b.player, b.history[:])
+        before = ([r[:] for r in b.grid], b.player, b.history[:], b.winner_)
         agent = AlphaBetaAgent(2)
         move = agent.choose_move(b)             # truyền thẳng bàn, không copy
         assert move in [(r, c) for r in range(7) for c in range(7)
                         if before[0][r][c] == 0], "nước đi không hợp lệ"
-        after = (b.grid, b.player, b.history)
-        assert after == before, "play/undo không cân bằng, bàn bị thay đổi"
+        after = (b.grid, b.player, b.history, b.winner_)
+        assert after == before, "bàn của người gọi bị thay đổi"
 
 
-# ---------- 3. Đối chiếu với minimax thuần (kiểm tra quan trọng nhất) ----------
-def test_same_value_as_minimax_and_fewer_nodes():
+# ---------- 3. Đối chiếu với Backtracking (minimax thuần, cùng hàm đánh giá) ----------
+def test_same_value_as_backtracking_and_fewer_nodes():
     rng = random.Random(1)
-    total_ab = total_mm = 0
-    for _ in range(25):
-        n, k = rng.choice([(4, 3), (5, 4)])
-        b = random_position(n, k, rng.randint(1, 6), rng)
-        for depth in (2, 3):
-            agent = AlphaBetaAgent(depth)
-            agent.board = b.copy()
-            agent.nodes = 0
-            ab_value = agent.alpha_beta_prunning(depth, -INF, INF, agent.board.player)[2]
-            total_ab += agent.nodes
+    total_ab = total_bt = 0
+    for _ in range(40):
+        n, k = rng.choice([(3, 3), (4, 3), (5, 4), (6, 4)])
+        b = random_position(n, k, rng.randint(0, 8), rng)
+        for depth in (1, 2, 3):
+            ab = AlphaBetaAgent(depth)
+            ab.attach(b.copy())
+            ab_value = ab.alpha_beta_pruning(depth, -INF, INF, b.player)[2]
+            total_ab += ab.nodes
 
-            cnt = [0]
-            agent.board = b.copy()
-            mm_value = minimax(agent, depth, agent.board.player, cnt)
-            total_mm += cnt[0]
-            assert ab_value == mm_value, (n, k, depth, ab_value, mm_value)
-    assert total_ab < total_mm, "cắt tỉa không giảm được số node"
-    print(f"  số node alpha-beta {total_ab} < minimax {total_mm}")
+            bt = BacktrackingAgent(depth)
+            bt.attach(b.copy())
+            bt_value = bt.backtracking(depth, b.player)[2]
+            total_bt += bt.nodes
+            assert ab_value == bt_value, (n, k, depth, ab_value, bt_value)
+    assert total_ab < total_bt, "cắt tỉa không giảm được số node"
+    print(f"  số node alpha-beta {total_ab} < backtracking {total_bt}")
 
 
 # ---------- 4. Chơi cả ván ----------
@@ -115,7 +112,7 @@ class RandomPlayer:
     def __init__(self, rng):
         self.rng = rng
 
-    def choose_move(self, board):
+    def choose_move(self, board, time_limit=None):
         return self.rng.choice(board.legal_moves())
 
 
@@ -136,7 +133,6 @@ def test_3x3_perfect_play_is_draw():
 
 
 def test_deeper_is_not_worse():
-    rng = random.Random(3)
     score = 0
     for first in (1, 2):
         for _ in range(3):
@@ -148,6 +144,24 @@ def test_deeper_is_not_worse():
             elif w is not None:
                 score -= 1
     assert score >= 0, "độ sâu lớn hơn lại yếu hơn độ sâu nhỏ"
+
+
+# ---------- 5. Giới hạn thời gian (iterative deepening) ----------
+def test_time_limit_returns_legal_move_in_time():
+    rng = random.Random(4)
+    b = random_position(10, 5, 10, rng)
+    agent = AlphaBetaAgent(3)
+    t0 = time.perf_counter()
+    move = agent.choose_move(b, time_limit=0.3)
+    elapsed = time.perf_counter() - t0
+    assert b.grid[move[0]][move[1]] == 0
+    assert elapsed < 1.0, f"vượt giờ quá nhiều ({elapsed:.2f}s)"
+    assert agent.stats["depth"] >= 1
+
+
+def test_time_limit_finds_win():
+    b = make_board(5, 3, [(0, 0), (4, 4), (0, 1), (4, 3)])
+    assert AlphaBetaAgent(3).choose_move(b.copy(), time_limit=0.5) == (0, 2)
 
 
 if __name__ == "__main__":
