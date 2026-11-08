@@ -82,7 +82,7 @@ def poll_ai():
 
 
 def board_geometry():
-    # Ô vuông, tự co theo kích thước canvas hiện tại để luôn thấy toàn bàn
+    # Tính kích thước ô theo canvas để luôn thấy toàn bàn
     width = max(canvas.winfo_width(), 1)
     height = max(canvas.winfo_height(), 1)
     cell = max(min(width, height) // board.n, 1)
@@ -161,7 +161,7 @@ def new_game():
 window = Tk()
 window.title("Tic-Tac-Toe")
 
-# Cửa sổ luôn nằm gọn trong màn hình và căn giữa; bàn cờ co giãn theo cửa sổ
+# Cửa sổ nằm gọn trong màn hình, bàn cờ co giãn theo cửa sổ
 screen_w = window.winfo_screenwidth()
 screen_h = window.winfo_screenheight()
 win_w = min(900, screen_w - 80)

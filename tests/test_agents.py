@@ -1,7 +1,6 @@
 """
-Kiểm tra bộ đánh giá, Backtracking, MCTS, Random. Chạy từ thư mục gốc repo:
+Test bộ đánh giá, Backtracking, MCTS, Random. Chạy từ thư mục gốc repo:
     python -m tests.test_agents
-    python -m pytest tests -q
 """
 import random
 import time
@@ -79,9 +78,9 @@ def test_mcts_block():
 
 
 def test_mcts_takes_win_over_block():
-    # X sắp thắng ở (0,2) nhưng O thắng ngay ở (4,2): đến lượt O phải thắng, không chặn
+    # X sắp thắng ở (0,2) nhưng O thắng ngay ở (4,2), O phải thắng chứ không chặn
     b = make_board(5, 3, [(0, 0), (4, 4), (0, 1), (4, 3)])
-    b.play((2, 2))          # X đi chỗ khác, đến lượt O
+    b.play((2, 2))
     assert b.player == 2
     assert MCTSAgent(200, seed=0).choose_move(b.copy()) == (4, 2)
 

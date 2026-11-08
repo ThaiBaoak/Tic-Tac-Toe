@@ -1,13 +1,3 @@
-"""Hàm đánh giá + khung tìm kiếm dùng chung cho Backtracking và Alpha-beta.
-
-Hai agent này phải dùng CÙNG một hàm đánh giá để so sánh công bằng: alpha-beta chỉ được
-phép nhanh hơn (cắt tỉa), không được cho giá trị khác backtracking ở cùng độ sâu.
-
-Ý tưởng hàm đánh giá: chia bàn cờ thành mọi "cửa sổ" k ô liên tiếp (4 hướng). Cửa sổ chỉ
-có quân của một bên thì có giá trị 10**số_quân của bên đó; cửa sổ có quân cả hai bên thì
-vô giá trị. Điểm = (tổng của X) - (tổng của O). Thay vì quét lại cả bàn mỗi lần (O(n²·k)),
-LineEvaluator cập nhật gia tăng khi đặt/gỡ một quân: chỉ đụng tới ≤ 4k cửa sổ chứa ô đó.
-"""
 import time
 
 from .base import Agent
@@ -18,10 +8,9 @@ DIRS = ((0, 1), (1, 0), (1, 1), (1, -1))
 _WINDOW_CACHE = {}
 
 
-def _build_windows(n, k):
-    """Với mỗi ô, danh sách id các cửa sổ k ô liên tiếp chứa ô đó (tính một lần cho mỗi (n, k))."""
-    key = (n, k)
-    if key not in _WINDOW_CACHE:
+# Với mỗi ô, trả về danh sách các cửa sổ k ô liên tiếp chứa ô đó
+def build_windows(n, k):
+    if (n, k) not in _WINDOW_CACHE:
         cell_windows = [[] for _ in range(n * n)]
         count = 0
         for r in range(n):
@@ -33,26 +22,25 @@ def _build_windows(n, k):
                     for i in range(k):
                         cell_windows[(r + i * dr) * n + (c + i * dc)].append(count)
                     count += 1
-        _WINDOW_CACHE[key] = (cell_windows, count)
-    return _WINDOW_CACHE[key]
+        _WINDOW_CACHE[(n, k)] = (cell_windows, count)
+    return _WINDOW_CACHE[(n, k)]
 
 
+# Điểm đánh giá, cập nhật dần mỗi khi đặt hoặc gỡ một quân
+# Cửa sổ chỉ có quân một bên: 10^số_quân, có quân cả hai bên: 0
 class LineEvaluator:
-    """Điểm đánh giá được cập nhật gia tăng qua place()/remove()."""
-
     def __init__(self, n, k):
         self.n, self.k = n, k
-        self.cell_windows, self.num_windows = _build_windows(n, k)
-        self.weight = [0] + [10 ** m for m in range(1, k + 1)]   # cửa sổ chưa có quân nào = 0 điểm
-        # Tổng các cửa sổ <= 4n² * 10**(k-1) < 10**(k+3), nên WIN luôn lớn hơn mọi điểm heuristic.
+        self.cell_windows, self.num_windows = build_windows(n, k)
+        self.weight = [0] + [10 ** m for m in range(1, k + 1)]
         self.win = 10 ** (k + 3)
-        self.threat_score = self.win // 2   # bên đi tiếp có k-1 quân thẳng hàng + 1 ô trống = thắng ngay
+        self.threat_score = self.win // 2
         self.reset()
 
     def reset(self, grid=None):
         self.count = [None, [0] * self.num_windows, [0] * self.num_windows]
-        self.score = [0, 0, 0]      # score[p]: tổng giá trị các cửa sổ còn "sống" của người p
-        self.threats = [0, 0, 0]    # threats[p]: số cửa sổ của p còn thiếu đúng 1 quân để thắng
+        self.score = [0, 0, 0]
+        self.threats = [0, 0, 0]    # số cửa sổ còn thiếu đúng 1 quân là thắng
         if grid:
             for r in range(self.n):
                 for c in range(self.n):
@@ -65,13 +53,13 @@ class LineEvaluator:
         w, km1, score, threats = self.weight, self.k - 1, self.score, self.threats
         for wid in self.cell_windows[r * self.n + c]:
             a, b = mine[wid], theirs[wid]
-            if b == 0:                      # cửa sổ vẫn thuộc về p, có thêm một quân
+            if b == 0:
                 score[p] += w[a + 1] - w[a]
                 if a == km1:
                     threats[p] -= 1
                 elif a + 1 == km1:
                     threats[p] += 1
-            elif a == 0:                    # cửa sổ của đối thủ bị p chặn
+            elif a == 0:
                 score[o] -= w[b]
                 if b == km1:
                     threats[o] -= 1
@@ -89,14 +77,14 @@ class LineEvaluator:
                     threats[p] += 1
                 elif a == km1:
                     threats[p] -= 1
-            elif a == 1:                    # gỡ quân cuối: cửa sổ của đối thủ sống lại
+            elif a == 1:
                 score[o] += w[b]
                 if b == km1:
                     threats[o] += 1
             mine[wid] = a - 1
 
+    # Giá trị của việc đặt quân p vào ô (r, c), dùng để sắp xếp nước đi
     def cell_value(self, r, c, p):
-        """Đặt quân p vào (r, c) thì "góp" được bao nhiêu vào các cửa sổ còn mở của p. Dùng để sắp thứ tự nước đi."""
         mine, theirs, w = self.count[p], self.count[3 - p], self.weight
         total = 0
         for wid in self.cell_windows[r * self.n + c]:
@@ -105,10 +93,13 @@ class LineEvaluator:
         return total
 
 
-class SearchAgent(Agent):
-    """Phần chung của Backtracking và Alpha-beta: duyệt cây bằng play/undo trên một bàn cờ duy nhất."""
+class SearchTimeout(Exception):
+    pass
 
-    SMALL_BOARD = 25    # bàn <= 5x5: xét mọi ô trống; lớn hơn: chỉ xét ô kề quân đã đánh
+
+# Phần chung của Backtracking và Alpha-beta
+class SearchAgent(Agent):
+    SMALL_BOARD = 25    # bàn nhỏ thì xét mọi ô trống, bàn lớn chỉ xét ô kề quân đã đánh
 
     def __init__(self, depth=3):
         super().__init__()
@@ -120,7 +111,6 @@ class SearchAgent(Agent):
         self.nodes = 0
 
     def attach(self, board):
-        """Gắn bàn cờ (đã được copy) và dựng lại bộ đánh giá theo thế cờ hiện tại."""
         self.board = board
         self.nodes = 0
         self.evaluator = LineEvaluator(board.n, board.k)
@@ -132,30 +122,26 @@ class SearchAgent(Agent):
         self.evaluator.place(move[0], move[1], player)
 
     def undo(self):
-        board = self.board
-        r, c = board.history[-1]
-        player = 3 - board.player
-        board.undo()
+        r, c = self.board.history[-1]
+        player = 3 - self.board.player
+        self.board.undo()
         self.evaluator.remove(r, c, player)
 
     def candidates(self):
-        board = self.board
-        if board.n * board.n <= self.SMALL_BOARD:
-            return board.legal_moves()
-        return board.candidate_moves()
+        if self.board.n * self.board.n <= self.SMALL_BOARD:
+            return self.board.legal_moves()
+        return self.board.candidate_moves()
 
+    # Sắp xếp nước đi: nước vừa tấn công vừa chặn đối thủ được xét trước
     def ordered_candidates(self, player):
-        """Nước đi theo thứ tự "hứa hẹn" trước: vừa tấn công (nối quân mình) vừa phòng thủ (chặn đối thủ).
-        Chỉ đổi thứ tự duyệt nên không đổi giá trị minimax, nhưng giúp cắt tỉa sớm và chọn nước hòa tốt hơn."""
         ev = self.evaluator
-        opponent = 3 - player
         moves = self.candidates()
-        moves.sort(key=lambda m: -(ev.cell_value(m[0], m[1], player) + ev.cell_value(m[0], m[1], opponent)))
+        moves.sort(key=lambda m: -(ev.cell_value(m[0], m[1], player) + ev.cell_value(m[0], m[1], 3 - player)))
         return moves
 
+    # Điểm theo góc nhìn của X: dương là X lợi, âm là O lợi
+    # depth là độ sâu còn lại, thắng càng sớm thì điểm càng cao
     def get_score(self, depth=0):
-        """Điểm từ góc nhìn của X (người 1): dương = X lợi, âm = O lợi.
-        `depth` là độ sâu còn lại: thắng càng sớm / thua càng muộn thì điểm càng tốt."""
         board, ev = self.board, self.evaluator
         if board.winner_ is not None:
             value = ev.win + depth
@@ -163,14 +149,6 @@ class SearchAgent(Agent):
         if board.is_full():
             return 0
         mover = board.player
-        if ev.threats[mover]:               # bên đi tiếp thắng ngay được, dù đã hết độ sâu
+        if ev.threats[mover]:
             return ev.threat_score if mover == 1 else -ev.threat_score
         return ev.score[1] - ev.score[2]
-
-
-class SearchTimeout(Exception):
-    pass
-
-
-def now():
-    return time.perf_counter()

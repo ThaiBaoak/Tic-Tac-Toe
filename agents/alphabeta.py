@@ -1,17 +1,9 @@
-from .evaluation import INF, SearchAgent, SearchTimeout, now
+import time
 
-__all__ = ["AlphaBetaAgent", "INF"]
+from .evaluation import INF, SearchAgent, SearchTimeout
 
 
 class AlphaBetaAgent(SearchAgent):
-    """Minimax + cắt tỉa alpha-beta.
-
-    - Cùng giá trị với Backtracking ở cùng độ sâu, nhưng duyệt ít node hơn nhờ cắt tỉa.
-    - Sắp thứ tự nước đi (tấn công + phòng thủ) để cắt tỉa sớm.
-    - Nếu truyền time_limit (giây): đào sâu dần (iterative deepening) tới khi hết giờ,
-      dùng nước tốt nhất của độ sâu đã duyệt xong. Nếu không: duyệt cố định `depth`.
-    """
-
     name = "Alpha-beta"
 
     def __init__(self, depth=3):
@@ -33,19 +25,19 @@ class AlphaBetaAgent(SearchAgent):
             r, c, _ = self.alpha_beta_pruning(self.depth, -INF, INF, player)
             reached = self.depth
         else:
-            r, c, reached = self.iterative_deepening(player, now() + time_limit)
+            r, c, reached = self.iterative_deepening(player, time.perf_counter() + time_limit)
 
         if r == -1:
             r, c = self.ordered_candidates(player)[0]
         self.stats = {"nodes": self.nodes, "depth": reached}
         return (r, c)
 
+    # Tăng dần độ sâu tới khi hết giờ, lấy nước của độ sâu cuối cùng duyệt xong
     def iterative_deepening(self, player, deadline):
         best = (-1, -1)
         reached = 0
         max_depth = self.board.n * self.board.n - self.root_len
         for depth in range(1, max_depth + 1):
-            # độ sâu 1 luôn chạy xong để chắc chắn có một nước đi hợp lệ
             self.deadline = deadline if depth > 1 else None
             try:
                 r, c, value = self.alpha_beta_pruning(depth, -INF, INF, player)
@@ -53,15 +45,15 @@ class AlphaBetaAgent(SearchAgent):
                 break
             if r != -1:
                 best = (r, c)
-                self.pv_move = best          # lần sau thử nước tốt nhất này đầu tiên
+                self.pv_move = best
             reached = depth
-            if abs(value) >= self.evaluator.win or now() >= deadline:
-                break                        # đã chứng minh thắng/thua, hoặc hết giờ
+            if abs(value) >= self.evaluator.win or time.perf_counter() >= deadline:
+                break
         return best[0], best[1], reached
 
     def alpha_beta_pruning(self, depth, alpha, beta, player):
         self.nodes += 1
-        if self.deadline is not None and self.nodes % 512 == 0 and now() > self.deadline:
+        if self.deadline is not None and self.nodes % 512 == 0 and time.perf_counter() > self.deadline:
             raise SearchTimeout()
 
         if depth == 0 or self.board.is_terminal():

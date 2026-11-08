@@ -7,8 +7,8 @@ from .base import Agent
 DIRS = ((0, 1), (1, 0), (1, 1), (1, -1))
 
 
+# Đặt quân player vào ô trống (r, c) có đủ k quân liên tiếp không
 def completes_line(grid, n, k, r, c, player):
-    """Đặt quân `player` vào ô trống (r, c) có tạo thành k quân liên tiếp không."""
     for dr, dc in DIRS:
         count = 1
         for sign in (1, -1):
@@ -23,31 +23,19 @@ def completes_line(grid, n, k, r, c, player):
 
 
 class MCTSNode:
-    """Một nút trong cây. Không giữ bàn cờ riêng: bàn cờ được dựng lại bằng play/undo khi đi xuống."""
-
     __slots__ = ("parent", "move", "mover", "children", "untried", "visits", "reward")
 
     def __init__(self, parent, move, mover, untried):
         self.parent = parent
-        self.move = move          # nước đi dẫn tới nút này
-        self.mover = mover        # người vừa đi nước đó (None ở gốc)
+        self.move = move        # nước đi dẫn tới nút này
+        self.mover = mover      # người vừa đi nước đó, gốc thì là None
         self.children = []
-        self.untried = untried    # các nước chưa mở rộng
+        self.untried = untried
         self.visits = 0
-        self.reward = 0.0         # tổng điểm, tính theo góc nhìn của `mover`
+        self.reward = 0.0       # tổng điểm theo góc nhìn của mover
 
 
 class MCTSAgent(Agent):
-    """Monte Carlo Tree Search với UCT: Selection -> Expansion -> Simulation -> Backpropagation.
-
-    - Một bàn cờ duy nhất, đi xuống bằng play(), quay lên bằng undo() (không copy bàn cho mỗi nút).
-    - Simulation là playout ngẫu nhiên thuần: xáo trộn các ô trống rồi đánh luân phiên tới khi có kết quả.
-    - Khi tạo một nút (đúng 1 lần, không phải ở mỗi bước playout): nếu có nước thắng ngay thì chỉ xét nước đó,
-      nếu không và đối thủ sắp thắng thì chỉ xét các nước chặn. Đây là luật thắng/chặn trong cây, không phải sửa kết quả.
-    - Bàn lớn (> 5x5): các nước trong cây chỉ lấy ở ô cách quân đã đánh <= REGION_DIST; playout vẫn ngẫu nhiên trên mọi ô trống.
-    - Chọn nước cuối cùng: nút con được thăm nhiều nhất (robust child).
-    """
-
     name = "MCTS"
     SMALL_BOARD = 25
     REGION_DIST = 2
@@ -68,12 +56,13 @@ class MCTSAgent(Agent):
         if board.is_terminal():
             return None
 
-        work = board.copy()          # không bao giờ làm thay đổi bàn của người gọi
+        work = board.copy()
         playable = self.playable_cells(work)
         root = self.new_node(work, None, None, None, playable)
         self.nodes = 1
 
-        if len(root.untried) == 1:   # chỉ còn một lựa chọn (thắng ngay / buộc chặn / nước đầu): khỏi tìm kiếm
+        # chỉ còn một nước để chọn thì khỏi tìm kiếm
+        if len(root.untried) == 1:
             self.stats = {"nodes": 1, "iterations": 0}
             return root.untried[0]
 
@@ -94,13 +83,13 @@ class MCTSAgent(Agent):
         node = root
         depth = 0
 
-        # 1. Selection: đi xuống theo UCT tới nút còn nước chưa mở rộng (hoặc nút lá/kết thúc)
+        # 1 Selection
         while not node.untried and node.children:
             node = self.select_child(node)
             work.play(node.move)
             depth += 1
 
-        # 2. Expansion: mở rộng một nước chưa thử
+        # 2 Expansion
         if node.untried:
             move = node.untried.pop()
             mover = work.player
@@ -111,11 +100,10 @@ class MCTSAgent(Agent):
             self.nodes += 1
             node = child
 
-        # 3. Simulation: nếu chưa kết thúc thì đánh ngẫu nhiên tới cuối
+        # 3 Simulation
         winner = work.winner_ if work.is_terminal() else self.rollout(work)
 
-        # 4. Backpropagation: cộng điểm theo góc nhìn của người đã đi vào từng nút
-        leaf = node
+        # 4 Backpropagation
         while node is not None:
             node.visits += 1
             if node.mover is not None:
@@ -127,8 +115,8 @@ class MCTSAgent(Agent):
 
         for _ in range(depth):
             work.undo()
-        return leaf
 
+    # Các ô được phép đi trong cây: bàn nhỏ lấy hết, bàn lớn chỉ lấy ô gần quân đã đánh
     def playable_cells(self, board):
         n = board.n
         if n * n <= self.SMALL_BOARD:
@@ -146,6 +134,7 @@ class MCTSAgent(Agent):
             self.random.shuffle(untried)
         return MCTSNode(parent, move, mover, untried)
 
+    # Có nước thắng ngay thì chỉ xét nước đó, không thì nếu đối thủ sắp thắng thì chỉ xét nước chặn
     def forced_or_all(self, board, moves):
         grid, n, k = board.grid, board.n, board.k
         me, opponent = board.player, 3 - board.player

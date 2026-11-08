@@ -1,13 +1,8 @@
 from .evaluation import INF, SearchAgent
 
 
+# Minimax giới hạn độ sâu, không cắt tỉa
 class BacktrackingAgent(SearchAgent):
-    """Vét cạn có giới hạn độ sâu (minimax thuần, KHÔNG cắt tỉa).
-
-    Thử một nước, đệ quy xuống, rồi hoàn tác (backtrack) để thử nước khác. Đây là mốc chuẩn:
-    Alpha-beta phải cho cùng giá trị ở cùng độ sâu nhưng duyệt ít node hơn.
-    """
-
     name = "Backtracking"
 
     def choose_move(self, board, time_limit=None):
@@ -15,8 +10,6 @@ class BacktrackingAgent(SearchAgent):
             return None
         self.attach(board.copy())
         player = self.board.player
-        # Chỉ ở gốc mới sắp thứ tự nước đi (để khi nhiều nước bằng điểm thì chọn nước tốt hơn);
-        # các node bên trong vẫn duyệt hết, không cắt tỉa.
         r, c, _ = self.backtracking(self.depth, player, ordered=True)
         if r == -1:
             r, c = self.ordered_candidates(player)[0]
