@@ -2,6 +2,8 @@ from tkinter import *
 from tkinter import ttk
 from game.board import Board
 from agents.mcts_agent import MCTSAgent
+from agents.alphabeta import AlphaBetaAgent
+from agents.backtracking import BacktrackingAgent
 import random
 import threading
 import queue
@@ -54,6 +56,10 @@ def trigger_ai():
 def ai_worker(board_copy, current_game_id, agent_name, iterations):
     if agent_name == "MCTS":
         best_move = MCTSAgent(iterations=iterations).choose_move(board_copy)
+    elif agent_name == "AlphaBeta":
+        best_move = AlphaBetaAgent().choose_move(board_copy)
+    elif agent_name == "Backtracking":
+        best_move = BacktrackingAgent().choose_move(board_copy)
     else:
         moves = board_copy.legal_moves()
         best_move = random.choice(moves) if moves else None
@@ -168,7 +174,7 @@ iterations_var = StringVar(value="500")
 Spinbox(control_frame, from_=1, to=100000, increment=100, textvariable=iterations_var,
         width=7, font=('consolas', 12)).grid(row=0, column=5, padx=5)
 
-AGENT_LIST = ["Human", "Random", "MCTS"] 
+AGENT_LIST = ["Human", "Random", "MCTS","AlphaBeta", "Backtracking"] 
 
 Label(control_frame, text="Player X:", font=('consolas', 12)).grid(row=1, column=0, padx=5, pady=5)
 combo_x = ttk.Combobox(control_frame, values=AGENT_LIST, state="readonly", width=10, font=('consolas', 12))
